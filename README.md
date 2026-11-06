@@ -1,22 +1,28 @@
 # Ocean Fruit RPG
 
-An original 3D browser-game prototype with account signup/login and four randomly assigned player races: Human, Shark, Rabbit, and Cyborg. A new account receives one race at signup; the race is saved and stays the same on later logins. Race versions unlock at levels 10 and 30 and change the aura/effect strength.
+An original 3D browser-game prototype with signup/login, randomly assigned saved races (Human, Shark, Rabbit, Cyborg), visible race auras/nameplates, basic race effects, drowning rules, and a simple shared chat.
 
 ## Run locally
 
-Requirements: Node.js 20 or newer.
+Requires Node.js 20+.
 
 ```sh
 npm install
 npm start
 ```
 
-Open http://localhost:3000. Create an account with a username of 3–20 letters/numbers/underscores and a unique password of at least 10 characters. Move with WASD, use your race skill with Space or the button, and train once every five seconds to gain XP. Player accounts, race, level, and XP are stored in SQLite.
+Open http://localhost:3000. Create an account with a username of 3–20 letters/numbers/underscores and a unique password of at least 10 characters. The first account created in an empty database is the owner/admin account; registration should be closed or the admin role reassigned before publicly opening a populated service. Race is assigned once and saved. Train to unlock versions at levels 10, 30, and 60. Move with WASD, use your race skill with Space.
+
+### Race and water rules
+
+After receiving a fruit, select it in the fruit inventory to eat/equip it. While in open water, fruit users take drowning damage. Health recovers on land. Shark III (race version 3, unlocked at level 30) is immune to sea damage and swims slowly. Shark IV (unlocked at level 60) is immune and swims at 3× normal swimming speed. Other races and players without a fruit do not get Shark sea immunity.
+
+### Owner tools and chat
+
+The first account created in a fresh database is the admin. Only that account sees the admin panel. Enter a fruit name and choose **Spawn & get fruit**; this adds and equips it. The server validates admin access. The chat is shared through server-backed polling and escapes message text in the browser.
 
 ## Deployment and security notes
 
-This is a playable starter prototype, not a production-ready multiplayer service. For deployment, use a persistent disk for the SQLite database and set `NODE_ENV=production` and a long random `SESSION_SECRET` environment variable. Use HTTPS. Back up the database, monitor the service, and verify your host's persistent storage/session behavior. Do not commit credentials or database files. For larger scale, migrate SQLite and file-backed sessions to managed PostgreSQL and a shared session store.
+This is a prototype, not a production-ready multiplayer service. Deploy behind HTTPS with `NODE_ENV=production` and a long random `SESSION_SECRET`; use persistent storage for SQLite and backups. Never commit credentials or database files. Registration is currently open, and the first-created account receives admin privileges: control who can create the first account or modify the bootstrap-admin policy before a public launch. For scale, use managed PostgreSQL and a shared session store. Chat moderation, reporting, and retention controls are not yet implemented.
 
-Passwords are hashed with bcrypt; sessions use HTTP-only, SameSite cookies and a SQLite-backed store. Authentication routes are rate-limited. Never reuse an important password on a prototype game.
-
-This game is original and does not include third-party franchise assets.
+Passwords are hashed with bcrypt; sessions use HTTP-only, SameSite cookies and a SQLite-backed store. Auth and chat are rate-limited. Never reuse an important password on a prototype game.

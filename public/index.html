@@ -12,17 +12,14 @@
   <main id="auth" class="card auth-card">
     <div class="eyebrow">A new ocean awaits</div><h1>Ocean Fruit RPG</h1>
     <p>Create an account or sign in. New adventurers receive one randomly assigned race, saved to their account.</p>
-    <form id="authForm">
-      <label>Username<input name="username" autocomplete="username" minlength="3" maxlength="20" required></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="72" required></label>
-      <div class="actions"><button type="submit" id="submitAuth">Sign in</button><button type="button" class="secondary" id="toggleAuth">Create account</button></div>
-      <div id="authMessage" role="status"></div>
-    </form>
+    <form id="authForm"><label>Username<input name="username" autocomplete="username" minlength="3" maxlength="20" required></label><label>Password<input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="72" required></label><div class="actions"><button type="submit" id="submitAuth">Sign in</button><button type="button" class="secondary" id="toggleAuth">Create account</button></div><div id="authMessage" role="status"></div></form>
     <small>Prototype account data is stored by this game server. Use a unique password.</small>
   </main>
   <div id="gameUI" hidden>
-    <header class="topbar card"><div><b id="playerName">Adventurer</b><span id="raceBadge"></span></div><div>Level <b id="level">1</b> · XP <b id="xp">0</b> · <b id="raceVersion">Human I</b></div><button id="logout" class="secondary">Log out</button></header>
-    <section class="card race-card"><div class="eyebrow">Your assigned race</div><h2 id="raceName">Human</h2><p id="raceDescription"></p><div class="version-track" id="versionTrack"></div><p class="hint" id="raceHint"></p><button id="raceSkill">Use race effect</button><button id="train" class="secondary">Train (+10 XP)</button></section>
+    <header class="topbar card"><div><b id="playerName">Adventurer</b><span id="raceBadge"></span><span id="fruitBadge">No fruit</span></div><div>Level <b id="level">1</b> · XP <b id="xp">0</b> · <b id="raceVersion">Human I</b><span class="health-wrap">Health <span class="health-track"><i id="healthBar"></i></span><b id="healthText">100</b></span></div><button id="logout" class="secondary">Log out</button></header>
+    <section class="card race-card"><div class="eyebrow">Your visible race</div><h2 id="raceName">Human</h2><p id="raceDescription"></p><div class="version-track" id="versionTrack"></div><p class="hint" id="raceHint"></p><button id="raceSkill">Use race effect</button><button id="train" class="secondary">Train (+10 XP)</button><h3>Your fruits</h3><div id="fruitInventory" class="fruit-list"></div></section>
+    <aside class="card chat-card"><div class="panel-title"><h3>Ocean Chat</h3><span>Players</span></div><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm" class="chat-form"><input id="chatInput" maxlength="180" placeholder="Say something..." autocomplete="off" required><button>Send</button></form></aside>
+    <aside id="adminPanel" class="card admin-card" hidden><div class="panel-title"><h3>⚙ Admin</h3><span>Owner tools</span></div><p>Spawn a fruit into your inventory and equip it.</p><label for="adminFruit">Fruit name</label><input id="adminFruit" maxlength="40" placeholder="e.g. Sea Serpent"><button id="spawnFruit">Spawn &amp; get fruit</button><div class="admin-commands"><b>Command</b><code>spawn (fruit name)</code></div><div id="adminMessage" role="status"></div></aside>
     <div class="controls card">Move with <b>W A S D</b> · Use race effect with <b>Space</b><br><span id="status">Welcome to the ocean.</span></div>
   </div>
 </body>

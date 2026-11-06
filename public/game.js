@@ -1,13 +1,13 @@
 (() => {
   const races = {
-    Human: { color: 0x67c8ff, css: '#67c8ff', versions: ['Human I','Human II','Human III'], traits: ['Steady','Adaptable','Focused'], description: 'A balanced voyager. Your focus burst briefly boosts movement and recovery.' },
-    Shark: { color: 0x45e0dc, css: '#45e0dc', versions: ['Shark I','Shark II','Shark III'], traits: ['Tideborn','Current Runner','Abyssal'], description: 'Tideborn explorers leave a water wake and surge forward with a current dash.' },
-    Rabbit: { color: 0xd8a7ff, css: '#d8a7ff', versions: ['Rabbit I','Rabbit II','Rabbit III'], traits: ['Fleetfoot','Springstep','Moonbound'], description: 'Fleet-footed wanderers make a quick, buoyant leap and leave a sparkling trail.' },
-    Cyborg: { color: 0xffb866, css: '#ffb866', versions: ['Cyborg I','Cyborg II','Cyborg III'], traits: ['Copper Core','Overdrive','Star Engine'], description: 'A mechanical adventurer releases a bright energy pulse and enters a brief overdrive.' }
+    Human: { color: 0x67c8ff, css: '#67c8ff', versions: ['Human I','Human II','Human III','Human IV'], traits: ['Steady','Adaptable','Focused','Ascendant'], description: 'A balanced voyager. Your focus burst briefly boosts movement.' },
+    Shark: { color: 0x45e0dc, css: '#45e0dc', versions: ['Shark I','Shark II','Shark III','Shark IV'], traits: ['Tideborn','Current Runner','Abyssal','Ocean Sovereign'], description: 'Shark III takes no sea damage and swims slowly. Shark IV takes no sea damage and swims at 3× speed.' },
+    Rabbit: { color: 0xd8a7ff, css: '#d8a7ff', versions: ['Rabbit I','Rabbit II','Rabbit III','Rabbit IV'], traits: ['Fleetfoot','Springstep','Moonbound','Starbound'], description: 'Fleet-footed wanderers make a quick, buoyant leap.' },
+    Cyborg: { color: 0xffb866, css: '#ffb866', versions: ['Cyborg I','Cyborg II','Cyborg III','Cyborg IV'], traits: ['Copper Core','Overdrive','Star Engine','Nova Engine'], description: 'A mechanical adventurer releases an energy pulse and enters overdrive.' }
   };
   const $ = id => document.getElementById(id);
   const auth = $('auth'), gameUI = $('gameUI'), form = $('authForm');
-  let isSignup = false, user = null, skillUntil = 0;
+  let isSignup = false, user = null, skillUntil = 0, chatCursor = 0, lastWorldTick = 0, lastChatPoll = 0;
   const msg = (text, good=false) => { $('authMessage').textContent = text; $('authMessage').style.color = good ? '#80efc1' : '#ff9eae'; };
   async function api(url, options={}) {
     const response = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
@@ -15,73 +15,32 @@
     if (!response.ok) throw new Error(data.error || 'Request failed.');
     return data;
   }
-  $('toggleAuth').addEventListener('click', () => {
-    isSignup = !isSignup;
-    $('submitAuth').textContent = isSignup ? 'Create account' : 'Sign in';
-    $('toggleAuth').textContent = isSignup ? 'I already have an account' : 'Create account';
-    form.elements.password.autocomplete = isSignup ? 'new-password' : 'current-password';
-    msg(isSignup ? 'New accounts are assigned a random race once.' : '');
-  });
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const button = $('submitAuth'); button.disabled = true; msg('');
-    try {
-      const result = await api(isSignup ? '/api/signup' : '/api/login', { method: 'POST', body: JSON.stringify({ username: form.elements.username.value, password: form.elements.password.value }) });
-      user = result.user; showGame();
-    } catch (error) { msg(error.message); }
-    finally { button.disabled = false; }
-  });
-  function showGame() {
-    auth.hidden = true; gameUI.hidden = false; updateUI(); setRaceMaterial();
-  }
-  function updateUI() {
-    const race = races[user.race];
-    $('playerName').textContent = user.username; $('raceBadge').textContent = user.race;
-    $('level').textContent = user.level; $('xp').textContent = user.xp; $('raceName').textContent = user.race;
-    $('raceName').style.color = race.css; $('raceDescription').textContent = race.description;
-    $('raceVersion').textContent = user.raceVersion; $('raceHint').textContent = `Trait: ${race.traits[user.raceVersionIndex]}. New versions unlock at levels 10 and 30.`;
-    $('versionTrack').replaceChildren(...race.versions.map((name, i) => { const el = document.createElement('span'); el.textContent = name; if (i <= user.raceVersionIndex) el.className = 'active'; return el; }));
-    setRaceMaterial();
-  }
-  $('logout').addEventListener('click', async () => { await api('/api/logout', {method:'POST'}).catch(()=>{}); location.reload(); });
-  $('train').addEventListener('click', async () => {
-    try { const result = await api('/api/train', {method:'POST'}); user = result.user; updateUI(); $('status').textContent = `Training complete. ${user.raceVersion} is active.`; }
-    catch(e) { $('status').textContent = e.message; }
-  });
-  $('raceSkill').addEventListener('click', useRaceSkill);
-  window.addEventListener('keydown', e => { if (e.code === 'Space' && user && !e.repeat) { e.preventDefault(); useRaceSkill(); } });
-  function useRaceSkill() {
-    if (!user) return;
-    if (performance.now() < skillUntil) { $('status').textContent = 'Race effect is recharging.'; return; }
-    skillUntil = performance.now() + 5000;
-    const effect = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: races[user.race].color, transparent: true, opacity: .62, wireframe: user.race === 'Cyborg' }));
-    effect.position.copy(player.position); effect.position.y += .8; scene.add(effect);
-    const start = performance.now();
-    const animateEffect = now => { const t = (now-start)/650; effect.scale.setScalar(1+t*5); effect.material.opacity = Math.max(0,.62*(1-t)); if (t < 1) requestAnimationFrame(animateEffect); else {scene.remove(effect);effect.geometry.dispose();effect.material.dispose();} };
-    requestAnimationFrame(animateEffect);
-    const version = user.raceVersionIndex;
-    if (user.race === 'Shark') { playerSpeed = 15 + version; $('status').textContent = `${user.raceVersion}: current dash!`; setTimeout(()=>playerSpeed=7,1000); }
-    else if (user.race === 'Rabbit') { player.position.y += 1.8 + version*.3; $('status').textContent = `${user.raceVersion}: spring leap!`; setTimeout(()=>player.position.y=1,700); }
-    else if (user.race === 'Cyborg') { $('status').textContent = `${user.raceVersion}: overdrive pulse!`; playerSpeed=12+version; setTimeout(()=>playerSpeed=7,1200); }
-    else { $('status').textContent = `${user.raceVersion}: focus burst!`; playerSpeed=10+version; setTimeout(()=>playerSpeed=7,1100); }
-  }
+  $('toggleAuth').addEventListener('click', () => { isSignup=!isSignup; $('submitAuth').textContent=isSignup?'Create account':'Sign in'; $('toggleAuth').textContent=isSignup?'I already have an account':'Create account'; form.elements.password.autocomplete=isSignup?'new-password':'current-password'; msg(isSignup?'New accounts are assigned a random race once.':''); });
+  form.addEventListener('submit', async event => { event.preventDefault(); const button=$('submitAuth');button.disabled=true;msg('');try{const result=await api(isSignup?'/api/signup':'/api/login',{method:'POST',body:JSON.stringify({username:form.elements.username.value,password:form.elements.password.value})});user=result.user;showGame();}catch(error){msg(error.message);}finally{button.disabled=false;} });
+  function showGame(){auth.hidden=true;gameUI.hidden=false;updateUI();startChat();}
+  function updateUI(){if(!user)return;const race=races[user.race];$('playerName').textContent=user.username;$('raceBadge').textContent=user.race;$('level').textContent=user.level;$('xp').textContent=user.xp;$('raceName').textContent=user.race;$('raceName').style.color=race.css;$('raceDescription').textContent=race.description;$('raceVersion').textContent=user.raceVersion;$('raceHint').textContent=`Trait: ${race.traits[user.raceVersionIndex]}. Versions unlock at levels 1, 10, 30 and 60.`;$('adminPanel').hidden=!user.isAdmin;$('fruitBadge').textContent=user.fruitName?`Fruit: ${user.fruitName}`:'No fruit';$('healthText').textContent=Math.round(user.health);$('healthBar').style.width=`${user.health}%`;$('healthBar').style.background=user.health<35?'#ff647c':'#76e6a8';$('versionTrack').replaceChildren(...race.versions.map((name,i)=>{const el=document.createElement('span');el.textContent=name;if(i<=user.raceVersionIndex)el.className='active';return el;}));renderFruitInventory();setRaceMaterial();updateNameplate();}
+  function renderFruitInventory(){const root=$('fruitInventory');root.replaceChildren();if(!user.fruitInventory.length){const empty=document.createElement('span');empty.className='hint';empty.textContent='No fruits yet. The owner can spawn one from the admin panel.';root.appendChild(empty);return;}for(const name of user.fruitInventory){const button=document.createElement('button');button.className='fruit-chip'+(user.fruitName===name?' equipped':'');button.textContent=user.fruitName===name?`${name} · equipped`:name;button.addEventListener('click',()=>eatFruit(name));root.appendChild(button);}}
+  async function eatFruit(fruitName){try{const result=await api('/api/fruit/eat',{method:'POST',body:JSON.stringify({fruitName})});user=result.user;updateUI();$('status').textContent=result.message+' Swimming in open water will cause drowning damage unless you are Shark III or IV.';}catch(e){$('status').textContent=e.message;}}
+  $('logout').addEventListener('click',async()=>{await api('/api/logout',{method:'POST'}).catch(()=>{});location.reload();});
+  $('train').addEventListener('click',async()=>{try{const result=await api('/api/train',{method:'POST'});user=result.user;updateUI();$('status').textContent=`Training complete. ${user.raceVersion} is active.`;}catch(e){$('status').textContent=e.message;}});
+  $('raceSkill').addEventListener('click',useRaceSkill);window.addEventListener('keydown',e=>{if(e.code==='Space'&&user&&!e.repeat){e.preventDefault();useRaceSkill();}});
+  $('spawnFruit').addEventListener('click',async()=>{const name=$('adminFruit').value.trim();try{const result=await api('/api/admin/spawn',{method:'POST',body:JSON.stringify({fruitName:name})});user=result.user;updateUI();$('adminMessage').textContent=result.message;$('adminFruit').value='';}catch(e){$('adminMessage').textContent=e.message;}});
+  $('adminFruit').addEventListener('keydown',e=>{if(e.key==='Enter')$('spawnFruit').click();});
+  $('chatForm').addEventListener('submit',async e=>{e.preventDefault();const input=$('chatInput');const text=input.value.trim();if(!text)return;try{const result=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text})});appendChat([result.message]);input.value='';}catch(error){$('status').textContent=error.message;}});
+  function appendChat(messages){const box=$('chatMessages');for(const item of messages){chatCursor=Math.max(chatCursor,item.id);const line=document.createElement('div');line.className='chat-line';const name=document.createElement('b');name.textContent=item.username+': ';const text=document.createElement('span');text.textContent=item.message;line.append(name,text);box.appendChild(line);}while(box.children.length>50)box.firstChild.remove();box.scrollTop=box.scrollHeight;}
+  async function pollChat(){if(!user)return;try{const result=await api(`/api/chat?after=${chatCursor}`);appendChat(result.messages);}catch{}setTimeout(pollChat,2500);}
+  function startChat(){pollChat();}
+  function useRaceSkill(){if(!user||!window.THREE||!player)return;if(performance.now()<skillUntil){$('status').textContent='Race effect is recharging.';return;}skillUntil=performance.now()+5000;const effect=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),new THREE.MeshBasicMaterial({color:races[user.race].color,transparent:true,opacity:.62,wireframe:user.race==='Cyborg'}));effect.position.copy(player.position);effect.position.y+=.8;scene.add(effect);const start=performance.now();const animateEffect=now=>{const t=(now-start)/650;effect.scale.setScalar(1+t*5);effect.material.opacity=Math.max(0,.62*(1-t));if(t<1)requestAnimationFrame(animateEffect);else{scene.remove(effect);effect.geometry.dispose();effect.material.dispose();}};requestAnimationFrame(animateEffect);const version=user.raceVersionIndex;if(user.race==='Shark'){playerSpeed=version>=3?21:15+version;$('status').textContent=version>=3?'Shark IV current surge! 3× swim speed.':version>=2?'Shark III current dash! Sea damage immunity active.':'Shark current dash!';setTimeout(()=>playerSpeed=7,1000);}else if(user.race==='Rabbit'){player.position.y+=1.8+version*.3;$('status').textContent=`${user.raceVersion}: spring leap!`;setTimeout(()=>player.position.y=1,700);}else if(user.race==='Cyborg'){$('status').textContent=`${user.raceVersion}: overdrive pulse!`;playerSpeed=12+version;setTimeout(()=>playerSpeed=7,1200);}else{$('status').textContent=`${user.raceVersion}: focus burst!`;playerSpeed=10+version;setTimeout(()=>playerSpeed=7,1100);}}
 
-  let scene, camera, renderer, player, playerMaterial, playerSpeed=7;
-  const keys = {};
-  function setRaceMaterial() { if (playerMaterial && user) { playerMaterial.color.setHex(races[user.race].color); playerMaterial.emissive.setHex(races[user.race].color); playerMaterial.emissiveIntensity = .16 + user.raceVersionIndex*.13; } }
-  function init3D() {
-    if (!window.THREE) { $('status').textContent='3D library did not load. Check connection and refresh.'; return; }
-    const canvas=$('scene'); renderer=new THREE.WebGLRenderer({canvas,antialias:true}); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-    scene=new THREE.Scene(); scene.background=new THREE.Color(0x071c2a); scene.fog=new THREE.Fog(0x071c2a,35,110);
-    camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,250);
-    scene.add(new THREE.HemisphereLight(0xa6e3ff,0x143040,1.3)); const sun=new THREE.DirectionalLight(0xffe6bd,1.7);sun.position.set(12,20,8);scene.add(sun);
-    const water=new THREE.Mesh(new THREE.PlaneGeometry(300,300),new THREE.MeshStandardMaterial({color:0x0b526a,roughness:.48,metalness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.12;scene.add(water);
-    for(let i=0;i<20;i++){const x=(Math.random()-.5)*95,z=(Math.random()-.5)*95,r=2+Math.random()*3;const island=new THREE.Mesh(new THREE.CylinderGeometry(r*.76,r,1.3,18),new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(.28+Math.random()*.15,.46,.32),roughness:1}));island.position.set(x,.55,z);scene.add(island);const hill=new THREE.Mesh(new THREE.ConeGeometry(.85+Math.random(),2.4+Math.random()*2,8),new THREE.MeshStandardMaterial({color:0x397d59}));hill.position.set(x,.9+hill.geometry.parameters.height/2,z);scene.add(hill);}
-    playerMaterial=new THREE.MeshStandardMaterial({color:0x67c8ff,emissive:0x67c8ff,emissiveIntensity:.2,roughness:.35});player=new THREE.Mesh(new THREE.CapsuleGeometry(.55,.95,4,10),playerMaterial);player.position.set(0,1,0);scene.add(player);
-    window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
-    const resize=()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();};window.addEventListener('resize',resize);resize();
-    const clock=new THREE.Clock();function frame(){requestAnimationFrame(frame);const dt=Math.min(clock.getDelta(),.04);if(player){const x=(keys.d?1:0)-(keys.a?1:0),z=(keys.s?1:0)-(keys.w?1:0),len=Math.hypot(x,z)||1;player.position.x+=x/len*playerSpeed*dt;player.position.z+=z/len*playerSpeed*dt;camera.position.lerp(new THREE.Vector3(player.position.x,player.position.y+7,player.position.z+10),.08);camera.lookAt(player.position.x,player.position.y,player.position.z);}renderer.render(scene,camera);}frame();
-  }
-  init3D();
-  api('/api/me').then(result=>{user=result.user;showGame();}).catch(()=>{});
+  let scene,camera,renderer,player,playerMaterial,playerSpeed=7,nameSprite,raceRing;
+  const keys={},islands=[];
+  function setRaceMaterial(){if(playerMaterial&&user){const race=races[user.race];playerMaterial.color.setHex(race.color);playerMaterial.emissive.setHex(race.color);playerMaterial.emissiveIntensity=.2+user.raceVersionIndex*.12;if(raceRing)raceRing.material.color.setHex(race.color);}}
+  function updateNameplate(){if(!nameSprite||!user)return;const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,512,128);ctx.fillStyle='rgba(4,16,28,.82)';ctx.beginPath();ctx.roundRect(16,12,480,100,30);ctx.fill();ctx.strokeStyle=races[user.race].css;ctx.lineWidth=7;ctx.stroke();ctx.fillStyle=races[user.race].css;ctx.font='bold 34px Arial';ctx.textAlign='center';ctx.fillText(`${user.race} · ${user.raceVersion}`,256,55);ctx.fillStyle='#ffffff';ctx.font='bold 25px Arial';ctx.fillText(user.username,256,91);const texture=new THREE.CanvasTexture(canvas);nameSprite.material.map?.dispose();nameSprite.material.map=texture;nameSprite.material.needsUpdate=true;}
+  function isOnLand(){return islands.some(island=>Math.hypot(player.position.x-island.x,player.position.z-island.z)<island.radius*.84);}
+  async function worldTick(){if(!user||!player)return;const now=performance.now();if(now-lastWorldTick<1000)return;const seconds=lastWorldTick?Math.min(2,(now-lastWorldTick)/1000):1;lastWorldTick=now;const inWater=!isOnLand();try{const result=await api('/api/world/tick',{method:'POST',body:JSON.stringify({inWater,seconds})});user.health=result.health;$('healthText').textContent=Math.round(result.health);$('healthBar').style.width=`${result.health}%`;$('healthBar').style.background=result.health<35?'#ff647c':'#76e6a8';if(inWater&&user.fruitName){if(result.sharkSafe){$('status').textContent=user.raceVersionIndex>=3?'Swimming safely · Shark IV: 3× swim speed':'Swimming safely · Shark III: sea damage immunity';}else if(result.health<=0){$('status').textContent='Drowned! Return to land to recover.';}else{$('status').textContent=`Drowning: ${Math.ceil(result.health)} health. Get back to land!`;}}else if(!inWater&&user.fruitName&&result.health<100){$('status').textContent='On land, recovering health.';}}catch{}}
+  function init3D(){if(!window.THREE){$('status').textContent='3D library did not load. Check connection and refresh.';return;}const canvas=$('scene');renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));scene=new THREE.Scene();scene.background=new THREE.Color(0x071c2a);scene.fog=new THREE.Fog(0x071c2a,35,110);camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,250);scene.add(new THREE.HemisphereLight(0xa6e3ff,0x143040,1.3));const sun=new THREE.DirectionalLight(0xffe6bd,1.7);sun.position.set(12,20,8);scene.add(sun);const water=new THREE.Mesh(new THREE.PlaneGeometry(300,300),new THREE.MeshStandardMaterial({color:0x0b526a,roughness:.48,metalness:.18}));water.rotation.x=-Math.PI/2;water.position.y=-.12;scene.add(water);
+    for(let i=0;i<20;i++){const x=(Math.random()-.5)*95,z=(Math.random()-.5)*95,r=2+Math.random()*3;islands.push({x,z,radius:r});const island=new THREE.Mesh(new THREE.CylinderGeometry(r*.76,r,1.3,18),new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(.28+Math.random()*.15,.46,.32),roughness:1}));island.position.set(x,.55,z);scene.add(island);const hill=new THREE.Mesh(new THREE.ConeGeometry(.85+Math.random(),2.4+Math.random()*2,8),new THREE.MeshStandardMaterial({color:0x397d59}));hill.position.set(x,2,z);scene.add(hill);}
+    playerMaterial=new THREE.MeshStandardMaterial({color:0x67c8ff,emissive:0x67c8ff,emissiveIntensity:.2,roughness:.35});player=new THREE.Mesh(new THREE.CapsuleGeometry(.55,.95,4,10),playerMaterial);player.position.set(0,1,0);scene.add(player);raceRing=new THREE.Mesh(new THREE.TorusGeometry(.78,.07,8,32),new THREE.MeshBasicMaterial({color:0x67c8ff}));raceRing.rotation.x=Math.PI/2;raceRing.position.y=.12;player.add(raceRing);const spriteMaterial=new THREE.SpriteMaterial({transparent:true,depthTest:false});nameSprite=new THREE.Sprite(spriteMaterial);nameSprite.position.set(0,2.4,0);nameSprite.scale.set(4.4,1.1,1);player.add(nameSprite);
+    window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);const resize=()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();};window.addEventListener('resize',resize);resize();const clock=new THREE.Clock();function frame(){requestAnimationFrame(frame);const dt=Math.min(clock.getDelta(),.04);if(player){let speed=playerSpeed;if(!isOnLand()&&user?.race==='Shark'&&user.raceVersionIndex>=3)speed*=3;const x=(keys.d?1:0)-(keys.a?1:0),z=(keys.s?1:0)-(keys.w?1:0),len=Math.hypot(x,z)||1;player.position.x+=x/len*speed*dt;player.position.z+=z/len*speed*dt;camera.position.lerp(new THREE.Vector3(player.position.x,player.position.y+7,player.position.z+10),.08);camera.lookAt(player.position.x,player.position.y,player.position.z);if(raceRing)raceRing.rotation.z+=dt*.8;worldTick();}renderer.render(scene,camera);}frame();}
+  init3D();api('/api/me').then(result=>{user=result.user;showGame();}).catch(()=>{});
 })();
