@@ -1,28 +1,20 @@
 # Ocean Fruit RPG
 
-An original 3D browser-game prototype with signup/login, randomly assigned saved races (Human, Shark, Rabbit, Cyborg), visible race auras/nameplates, basic race effects, drowning rules, and a simple shared chat.
+Original 3D browser-game prototype with account login, saved random races, fruit drowning rules, chat, owner fruit tools, and island shops for swords, guns, fruit stock, and randomized gacha.
 
 ## Run locally
-
 Requires Node.js 20+.
 
 ```sh
 npm install
 npm start
 ```
+Open http://localhost:3000. Signup assigns a race and 10,000 starter berries. The first account in an empty database is admin. Train to unlock versions at levels 10, 30, and 60; max level is 5,000.
 
-Open http://localhost:3000. Create an account with a username of 3–20 letters/numbers/underscores and a unique password of at least 10 characters. The first account created in an empty database is the owner/admin account; registration should be closed or the admin role reassigned before publicly opening a populated service. Race is assigned once and saved. Train to unlock versions at levels 10, 30, and 60. Move with WASD, use your race skill with Space.
+## Shops and economy
+Choose an unlocked island in the Island Shops panel. Islands have different sword, gun, and fruit selections. Stock is server-side, shared between players, decremented on purchase, and replenishes every 24 hours. Rarer fruits have higher prices and lower stock. Purchased fruit enters inventory; select it to equip/eat it. Weapon purchases equip the item and add it to inventory.
 
-### Race and water rules
-
-After receiving a fruit, select it in the fruit inventory to eat/equip it. While in open water, fruit users take drowning damage. Health recovers on land. Shark III (race version 3, unlocked at level 30) is immune to sea damage and swims slowly. Shark IV (unlocked at level 60) is immune and swims at 3× normal swimming speed. Other races and players without a fruit do not get Shark sea immunity.
-
-### Owner tools and chat
-
-The first account created in a fresh database is the admin. Only that account sees the admin panel. Enter a fruit name and choose **Spawn & get fruit**; this adds and equips it. The server validates admin access. The chat is shared through server-backed polling and escapes message text in the browser.
+Fruit gacha is available at each island. Price scales with level and reaches exactly 50,000,000 berries at level 5,000 (formula: max(250, round(50,000,000 × (level / 5,000)^2))). The server chooses a randomized fruit using rarity-weighted odds. Gacha and shop purchases are validated and charged server-side.
 
 ## Deployment and security notes
-
-This is a prototype, not a production-ready multiplayer service. Deploy behind HTTPS with `NODE_ENV=production` and a long random `SESSION_SECRET`; use persistent storage for SQLite and backups. Never commit credentials or database files. Registration is currently open, and the first-created account receives admin privileges: control who can create the first account or modify the bootstrap-admin policy before a public launch. For scale, use managed PostgreSQL and a shared session store. Chat moderation, reporting, and retention controls are not yet implemented.
-
-Passwords are hashed with bcrypt; sessions use HTTP-only, SameSite cookies and a SQLite-backed store. Auth and chat are rate-limited. Never reuse an important password on a prototype game.
+This is a prototype, not a production-ready multiplayer service. Deploy behind HTTPS with `NODE_ENV=production` and a long random `SESSION_SECRET`; use persistent storage and backups for the SQLite database. The first account created receives admin privileges, so control registration/bootstrap carefully before opening the service publicly. Auth, chat, and shop routes are rate limited. Chat moderation/reporting and production-scale infrastructure are not included.
