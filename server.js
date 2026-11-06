@@ -15,104 +15,161 @@ const databasePath = process.env.DB_FILE || path.join(__dirname, 'game.sqlite');
 const db = new Database(databasePath);
 db.pragma('journal_mode = WAL');
 db.exec(`CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL COLLATE NOCASE UNIQUE,
-  password_hash TEXT NOT NULL, race TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1,
-  xp INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  password_hash TEXT NOT NULL,
+  race TEXT NOT NULL,
+  level INTEGER NOT NULL DEFAULT 1,
+  xp INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
-function addColumnIfMissing(table, column, declaration) {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name);
-  if (!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${declaration}`);
+function addColumnIfMissing(column, declaration) {
+  const columns = db.prepare('PRAGMA table_info(users)').all().map(row => row.name);
+  if (!columns.includes(column)) db.exec(`ALTER TABLE users ADD COLUMN ${column} ${declaration}`);
 }
-[
-  ['is_admin', 'INTEGER NOT NULL DEFAULT 0'], ['fruit_inventory', "TEXT NOT NULL DEFAULT '[]'"],
-  ['fruit_name', 'TEXT'], ['health', 'REAL NOT NULL DEFAULT 100'], ['berries', 'INTEGER NOT NULL DEFAULT 10000'],
-  ['item_inventory', "TEXT NOT NULL DEFAULT '[]'"], ['equipped_sword', 'TEXT'], ['equipped_gun', 'TEXT'],
-  ['accessory_inventory', "TEXT NOT NULL DEFAULT '[]'"], ['equipped_accessory', 'TEXT'], ['energy', 'REAL NOT NULL DEFAULT 100']
-].forEach(([column, declaration]) => addColumnIfMissing('users', column, declaration));
-db.exec(`CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,username TEXT NOT NULL,message TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS shop_stock (island_id TEXT NOT NULL,item_id TEXT NOT NULL,quantity INTEGER NOT NULL,restock_at INTEGER NOT NULL,PRIMARY KEY(island_id,item_id));`);
+addColumnIfMissing('is_admin', 'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('berries', 'INTEGER NOT NULL DEFAULT 10000');
+addColumnIfMissing('energy', 'REAL NOT NULL DEFAULT 100');
+addColumnIfMissing('learned_skills', "TEXT NOT NULL DEFAULT '[]'");
+addColumnIfMissing('skill_mastery', "TEXT NOT NULL DEFAULT '{}'");
 
 const races = {
-  Human: { color:'#67c8ff', versions:['Human I','Human II','Human III','Human IV'], traits:['Steady','Adaptable','Focused','Ascendant'], description:'Balanced movement and a brief focus burst.' },
-  Shark: { color:'#45e0dc', versions:['Shark I','Shark II','Shark III','Shark IV'], traits:['Tideborn','Current Runner','Abyssal','Ocean Sovereign'], description:'Shark III is immune to sea damage and swims slowly; Shark IV is immune and swims at 3× speed.' },
-  Rabbit: { color:'#d8a7ff', versions:['Rabbit I','Rabbit II','Rabbit III','Rabbit IV'], traits:['Fleetfoot','Springstep','Moonbound','Starbound'], description:'Quick movement and a springing leap.' },
-  Cyborg: { color:'#ffb866', versions:['Cyborg I','Cyborg II','Cyborg III','Cyborg IV'], traits:['Copper Core','Overdrive','Star Engine','Nova Engine'], description:'Mechanical glow and an overdrive pulse.' }
+  Human: { color: '#67c8ff' }, Shark: { color: '#45e0dc' },
+  Rabbit: { color: '#d8a7ff' }, Cyborg: { color: '#ffb866' }
 };
-const chooseRace = () => Object.keys(races)[crypto.randomInt(Object.keys(races).length)];
-const rarityStock = { Common:12, Uncommon:8, Rare:5, Epic:3, Legendary:2, Mythical:1, 'Ancient Mythic':1 };
-const rarityPrice = { Common:2500, Uncommon:12000, Rare:60000, Epic:250000, Legendary:1000000, Mythical:5000000, 'Ancient Mythic':25000000 };
-const fruitGroups = {
-  Common:['Pebble','Gust','Sprout','Spark','Puddle','Shell','Moth','Bramble','Cinder','Ripple','Dew','Kite','Thorn','Moss','Drift','Sail','Flint','Pollen','Mist','Crab','Soot','Reed','Tumble','Breeze','Acorn','Ink','Clove','Frost','Wisp','Silt','Lantern','Vine','Marble','Tide','Feather','Whistle','Dune','Berry','Tallow','Coral'],
-  Uncommon:['Moonpetal','Ironwood','Cloudstep','Glasswing','Foxfire','Rainsong','Coppercoil','Snowcap','Sunshade','Quickroot','Stormbell','Honeycomb','Nightjar','Blueflame','Seaglass','Wildmint','Starling','CaveBloom','Saltstone','Sundial','Firefly','Windchime','Frostfern','Mimic','Brightscale'],
-  Rare:['Tempest','Moonfin','Prism','Blackwater','Silvervein','Crown','Hollow','Vapor','Nautilus','Scorpion','Galecrest','Jadeheart','Echo','Razorleaf','Comet'],
-  Epic:['Stormglass','Solaris','Abyss','Basilisk','Volta','Radiant','Magma','Onyx','Warden','Horizon'],
-  Legendary:['Starfall','Emberglass','Dreadwake','Aurora','Voidtide','Worldtree'],
-  Mythical:['Phoenix Bloom','Leviathan Core','Eclipse Crown','Celestial Forge']
+const raceNames = Object.keys(races);
+const trainers = [
+  { id: 'dodge', name: 'Dodge Training', teacher: 'Mira Quickstep', island: 'Coral Harbor', minLevel: 1, cost: 2500, description: 'Learn a quick evasive dash. Mastery increases dash distance and reduces its cooldown.' },
+  { id: 'haki', name: 'Haki Training', teacher: 'Old Kai', island: 'Tempest Port', minLevel: 101, cost: 75000, description: 'Surround yourself with a willpower aura. Mastery improves its duration and combat boost.' },
+  { id: 'teleport', name: 'Blink Training', teacher: 'The Wayfinder', island: 'Starfall Docks', minLevel: 601, cost: 500000, description: 'Learn a short-range teleport. Mastery increases distance and reduces cooldown.' }
+];
+const skillDefaults = {
+  dodge: { cooldownMs: 8000, energyCost: 20, durationMs: 650, baseDistance: 7 },
+  haki: { cooldownMs: 15000, energyCost: 30, durationMs: 6000, damageMultiplier: 1.2 },
+  teleport: { cooldownMs: 12000, energyCost: 25, durationMs: 350, baseDistance: 8 }
 };
-const fruits = Object.entries(fruitGroups).flatMap(([rarity,names]) => names.map(name => ({id:`fruit:${name}`,name,type:'fruit',rarity,price:rarityPrice[rarity],requiredLevel:0,stock:rarityStock[rarity]})));
-for (const name of ['Sea Serpent','Disguise','Angel','Demon']) fruits.push({id:`fruit:${name}`,name,type:'fruit',rarity:'Ancient Mythic',price:rarityPrice['Ancient Mythic'],requiredLevel:60,stock:1});
-const weapons = [
-  {id:'sword:Harbor Cutlass',name:'Harbor Cutlass',type:'sword',rarity:'Common',price:1200,requiredLevel:1,stock:20},{id:'gun:Deckhand Flintlock',name:'Deckhand Flintlock',type:'gun',rarity:'Common',price:1500,requiredLevel:1,stock:20},
-  {id:'sword:Reefsplitter',name:'Reefsplitter',type:'sword',rarity:'Uncommon',price:22000,requiredLevel:25,stock:10},{id:'gun:Tidecaller Repeater',name:'Tidecaller Repeater',type:'gun',rarity:'Uncommon',price:28000,requiredLevel:25,stock:10},
-  {id:'sword:Tempest Saber',name:'Tempest Saber',type:'sword',rarity:'Rare',price:180000,requiredLevel:101,stock:7},{id:'gun:Stormline Rifle',name:'Stormline Rifle',type:'gun',rarity:'Rare',price:220000,requiredLevel:101,stock:7},
-  {id:'sword:Emberbrand',name:'Emberbrand',type:'sword',rarity:'Epic',price:1200000,requiredLevel:301,stock:4},{id:'gun:Cinderlock Cannon',name:'Cinderlock Cannon',type:'gun',rarity:'Epic',price:1500000,requiredLevel:301,stock:4},
-  {id:'sword:Starforged Edge',name:'Starforged Edge',type:'sword',rarity:'Legendary',price:8000000,requiredLevel:601,stock:2},{id:'gun:Nova Handcannon',name:'Nova Handcannon',type:'gun',rarity:'Legendary',price:9500000,requiredLevel:601,stock:2},
-  {id:'sword:Voidwake',name:'Voidwake',type:'sword',rarity:'Mythical',price:30000000,requiredLevel:1200,stock:1},{id:'gun:Celestial Longarm',name:'Celestial Longarm',type:'gun',rarity:'Mythical',price:35000000,requiredLevel:1200,stock:1}
-];
-const accessories = [
-  {id:'accessory:Current Pendant',name:'Current Pendant',type:'accessory',rarity:'Uncommon',price:18000,requiredLevel:25,stock:8,energyBonus:20,cooldownReduction:0.05,description:'+20 max energy, 5% faster fruit cooldowns.'},
-  {id:'accessory:Tideglass Charm',name:'Tideglass Charm',type:'accessory',rarity:'Rare',price:140000,requiredLevel:101,stock:5,energyBonus:35,cooldownReduction:0.1,description:'+35 max energy, 10% faster fruit cooldowns.'},
-  {id:'accessory:Stormrunner Boots',name:'Stormrunner Boots',type:'accessory',rarity:'Epic',price:900000,requiredLevel:301,stock:3,energyBonus:25,cooldownReduction:0.15,description:'+25 max energy, 15% faster fruit cooldowns.'},
-  {id:'accessory:Starwake Circlet',name:'Starwake Circlet',type:'accessory',rarity:'Legendary',price:6500000,requiredLevel:601,stock:2,energyBonus:60,cooldownReduction:0.2,description:'+60 max energy, 20% faster fruit cooldowns.'},
-  {id:'accessory:Ancient Core',name:'Ancient Core',type:'accessory',rarity:'Mythical',price:22000000,requiredLevel:1200,stock:1,energyBonus:100,cooldownReduction:0.3,description:'+100 max energy, 30% faster fruit cooldowns.'}
-];
-const islands = [
-  {id:'coral-harbor',name:'Coral Harbor',sea:'Coral Reach',requiredLevel:1,fruits:['Pebble','Gust','Sprout','Spark','Puddle','Shell','Bramble','Ripple','Moonpetal','Ironwood'],weapons:['sword:Harbor Cutlass','gun:Deckhand Flintlock'],accessories:[]},
-  {id:'driftwood-cove',name:'Driftwood Cove',sea:'Coral Reach',requiredLevel:25,fruits:['Dew','Kite','Mist','Coral','Cloudstep','Foxfire','Rainsong','Coppercoil','Frostfern','Mimic'],weapons:['sword:Reefsplitter','gun:Tidecaller Repeater'],accessories:['accessory:Current Pendant']},
-  {id:'tempest-port',name:'Tempest Port',sea:'Tempest Expanse',requiredLevel:101,fruits:['Tempest','Moonfin','Prism','Blackwater','Silvervein','Crown','Hollow','Vapor','Nautilus','Scorpion','Stormglass'],weapons:['sword:Tempest Saber','gun:Stormline Rifle'],accessories:['accessory:Tideglass Charm']},
-  {id:'gale-isle',name:'Gale Isle',sea:'Tempest Expanse',requiredLevel:200,fruits:['Galecrest','Jadeheart','Echo','Razorleaf','Comet','Solaris','Abyss','Basilisk','Volta'],weapons:['sword:Tempest Saber','gun:Stormline Rifle'],accessories:['accessory:Tideglass Charm']},
-  {id:'ember-bastion',name:'Ember Bastion',sea:'Emberdeep',requiredLevel:301,fruits:['Radiant','Magma','Onyx','Warden','Horizon','Starfall','Emberglass','Dreadwake','Aurora'],weapons:['sword:Emberbrand','gun:Cinderlock Cannon'],accessories:['accessory:Stormrunner Boots']},
-  {id:'ashen-garden',name:'Ashen Garden',sea:'Emberdeep',requiredLevel:450,fruits:['Voidtide','Worldtree','Phoenix Bloom','Leviathan Core'],weapons:['sword:Emberbrand','gun:Cinderlock Cannon'],accessories:['accessory:Stormrunner Boots']},
-  {id:'starfall-docks',name:'Starfall Docks',sea:'Starfall Ocean',requiredLevel:601,fruits:['Eclipse Crown','Celestial Forge','Sea Serpent','Disguise','Angel','Demon'],weapons:['sword:Starforged Edge','gun:Nova Handcannon'],accessories:['accessory:Starwake Circlet']},
-  {id:'void-citadel',name:'Void Citadel',sea:'Starfall Ocean',requiredLevel:1200,fruits:['Sea Serpent','Disguise','Angel','Demon','Phoenix Bloom','Leviathan Core','Eclipse Crown','Celestial Forge'],weapons:['sword:Voidwake','gun:Celestial Longarm'],accessories:['accessory:Ancient Core']}
-];
-const catalog = new Map([...fruits,...weapons,...accessories].map(item=>[item.id,item]));
-const authLimiter=rateLimit({windowMs:15*60*1000,limit:12,standardHeaders:'draft-8',legacyHeaders:false});
-const chatLimiter=rateLimit({windowMs:60*1000,limit:15,standardHeaders:'draft-8',legacyHeaders:false});
-const shopLimiter=rateLimit({windowMs:60*1000,limit:30,standardHeaders:'draft-8',legacyHeaders:false});
-if(production&&!process.env.SESSION_SECRET)throw new Error('Set SESSION_SECRET to a long, random secret in production.');
-if(production)app.set('trust proxy',1);
-app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'",'https://cdn.jsdelivr.net'],styleSrc:["'self'","'unsafe-inline'"],imgSrc:["'self'",'data:'],connectSrc:["'self'"],objectSrc:["'none'"],upgradeInsecureRequests:production?[]:null}}}));
-app.use(express.json({limit:'10kb'}));
-app.use(session({store:new SQLiteStoreFactory({db:'sessions.sqlite',dir:path.dirname(databasePath)}),secret:process.env.SESSION_SECRET||'development-only-change-before-deploy-'+crypto.randomBytes(24).toString('hex'),resave:false,saveUninitialized:false,name:'ocean.sid',cookie:{httpOnly:true,sameSite:'lax',secure:production,maxAge:7*24*60*60*1000}}));
-app.use(express.static(path.join(__dirname,'public')));
-const versionIndex=level=>level>=60?3:level>=30?2:level>=10?1:0;
-const parseArray=value=>{try{return JSON.parse(value||'[]')}catch{return[]}};
-function accessoryStats(row){const item=accessories.find(a=>a.id===row.equipped_accessory);return item||{energyBonus:0,cooldownReduction:0};}
-function safeUser(row){const index=versionIndex(row.level),accessory=accessoryStats(row);const maxEnergy=100+accessory.energyBonus;return{username:row.username,level:row.level,xp:row.xp,race:row.race,raceVersion:races[row.race].versions[index],raceVersionIndex:index,raceInfo:races[row.race],isAdmin:Boolean(row.is_admin),fruitInventory:parseArray(row.fruit_inventory),fruitName:row.fruit_name||null,health:Math.max(0,Math.min(100,row.health)),berries:row.berries,itemInventory:parseArray(row.item_inventory),equippedSword:row.equipped_sword||null,equippedGun:row.equipped_gun||null,accessoryInventory:parseArray(row.accessory_inventory),equippedAccessory:row.equipped_accessory||null,energy:Math.min(maxEnergy,row.energy),maxEnergy,cooldownReduction:accessory.cooldownReduction};}
-function getUser(req){return req.session.userId?db.prepare('SELECT * FROM users WHERE id=?').get(req.session.userId):null;}
-function requireAuth(req,res,next){if(!getUser(req))return res.status(401).json({error:'Please sign in first.'});next();}
-function requireAdmin(req,res,next){const user=getUser(req);if(!user)return res.status(401).json({error:'Please sign in first.'});if(!user.is_admin)return res.status(403).json({error:'Admin access required.'});next();}
-function validCredentials(body){const username=typeof body.username==='string'?body.username.trim():'';const password=typeof body.password==='string'?body.password:'';if(!/^[A-Za-z0-9_]{3,20}$/.test(username))return{error:'Username must be 3–20 letters, numbers, or underscores.'};if(password.length<10||password.length>72)return{error:'Password must be 10–72 characters.'};return{username,password};}
-function startSession(req,res,userId,status=200){req.session.regenerate(err=>{if(err)return res.status(500).json({error:'Could not start your session.'});req.session.userId=userId;req.session.save(saveError=>{if(saveError)return res.status(500).json({error:'Could not save your session.'});res.status(status).json({user:safeUser(getUser(req))});});});}
-app.post('/api/signup',authLimiter,async(req,res)=>{const input=validCredentials(req.body||{});if(input.error)return res.status(400).json({error:input.error});const hash=await bcrypt.hash(input.password,12);try{const insert=db.transaction(()=>{const first=db.prepare('SELECT COUNT(*) AS count FROM users').get().count===0;return db.prepare('INSERT INTO users(username,password_hash,race,is_admin) VALUES(?,?,?,?)').run(input.username,hash,chooseRace(),first?1:0);});startSession(req,res,Number(insert().lastInsertRowid),201);}catch(e){if(String(e.code).includes('SQLITE_CONSTRAINT'))return res.status(409).json({error:'That username is already taken.'});res.status(500).json({error:'Could not create account.'});}});
-app.post('/api/login',authLimiter,async(req,res)=>{const input=validCredentials(req.body||{});if(input.error)return res.status(400).json({error:input.error});const row=db.prepare('SELECT * FROM users WHERE username=?').get(input.username);if(!row||!(await bcrypt.compare(input.password,row.password_hash)))return res.status(401).json({error:'Incorrect username or password.'});startSession(req,res,row.id);});
-app.get('/api/me',(req,res)=>{const row=getUser(req);if(!row)return res.status(401).json({error:'Please sign in.'});res.json({user:safeUser(row)});});
-app.post('/api/train',requireAuth,(req,res)=>{const now=Date.now();if(req.session.lastTrain&&now-req.session.lastTrain<5000)return res.status(429).json({error:'Take a short breather before training again.'});req.session.lastTrain=now;const row=getUser(req);let xp=row.xp+10,level=row.level;while(xp>=level*25&&level<5000){xp-=level*25;level++;}db.prepare('UPDATE users SET level=?,xp=? WHERE id=?').run(level,xp,row.id);res.json({user:safeUser(getUser(req))});});
-app.post('/api/admin/spawn',requireAuth,requireAdmin,(req,res)=>{const name=typeof req.body?.fruitName==='string'?req.body.fruitName.trim():'';if(!/^[\p{L}\p{N}][\p{L}\p{N} '’-]{0,39}$/u.test(name))return res.status(400).json({error:'Enter a valid fruit name.'});const user=getUser(req),inventory=parseArray(user.fruit_inventory);if(!inventory.includes(name))inventory.push(name);db.prepare('UPDATE users SET fruit_inventory=?,fruit_name=? WHERE id=?').run(JSON.stringify(inventory),name,user.id);res.json({user:safeUser(getUser(req)),message:`${name} spawned and equipped.`});});
-app.post('/api/fruit/eat',requireAuth,(req,res)=>{const name=typeof req.body?.fruitName==='string'?req.body.fruitName:'',user=getUser(req),inventory=parseArray(user.fruit_inventory);if(!inventory.includes(name))return res.status(404).json({error:'You do not own that fruit.'});db.prepare('UPDATE users SET fruit_name=?,health=100 WHERE id=?').run(name,user.id);res.json({user:safeUser(getUser(req)),message:`${name} equipped. Beware of the sea!`});});
-app.post('/api/fruit/skill',requireAuth,(req,res)=>{const user=getUser(req);if(!user.fruit_name)return res.status(400).json({error:'Equip a fruit first.'});const admin=Boolean(user.is_admin);const now=Date.now();const cooldownMs=Math.round(8000*(1-safeUser(user).cooldownReduction));const next=req.session.fruitSkillReadyAt||0;if(!admin&&now<next)return res.status(429).json({error:`Fruit skill recharges in ${Math.ceil((next-now)/1000)} seconds.`,remainingMs:next-now});const cost=admin?0:25;if(!admin&&user.energy<cost)return res.status(400).json({error:'Not enough energy.'});if(!admin){req.session.fruitSkillReadyAt=now+cooldownMs;db.prepare('UPDATE users SET energy=energy-? WHERE id=?').run(cost,user.id);}res.json({fruitName:user.fruit_name,cooldownMs:admin?0:cooldownMs,energy:admin?user.energy:safeUser(getUser(req)).energy,maxEnergy:safeUser(getUser(req)).maxEnergy,admin,message:admin?'Admin fruit skill activated with no cooldown or energy cost.':`${user.fruit_name} skill activated.`});});
-app.post('/api/world/tick',requireAuth,(req,res)=>{const user=getUser(req),inWater=req.body?.inWater===true,elapsed=Math.max(0,Math.min(2,Number(req.body?.seconds)||1)),index=versionIndex(user.level),sharkSafe=user.race==='Shark'&&index>=2,accessory=accessoryStats(user),maxEnergy=100+accessory.energyBonus;let health=user.health;if(inWater&&user.fruit_name&&!sharkSafe)health=Math.max(0,health-12*elapsed);else health=Math.min(100,health+4*elapsed);const energy=Math.min(maxEnergy,user.energy+8*elapsed);db.prepare('UPDATE users SET health=?,energy=? WHERE id=?').run(health,energy,user.id);res.json({health,energy,maxEnergy,drowning:inWater&&Boolean(user.fruit_name)&&!sharkSafe&&health>0,sharkSafe,swimmingSpeedMultiplier:user.race==='Shark'&&index>=3?3:user.race==='Shark'&&index>=2?.65:1,knockedOut:health<=0});});
-function gachaPrice(level){return Math.max(250,Math.round(50000000*(Math.min(5000,Math.max(1,level))/5000)**2));}
-function pickFruit(){const weight={Common:100,Uncommon:55,Rare:25,Epic:10,Legendary:4,Mythical:1.5,'Ancient Mythic':.35},total=fruits.reduce((n,f)=>n+weight[f.rarity],0);let r=Math.random()*total;for(const fruit of fruits){r-=weight[fruit.rarity];if(r<=0)return fruit;}return fruits[0];}
-app.post('/api/gacha/roll',requireAuth,shopLimiter,(req,res)=>{const user=getUser(req),price=gachaPrice(user.level);if(user.berries<price)return res.status(400).json({error:`You need ${price.toLocaleString()} berries to roll.`});const fruit=pickFruit(),inventory=parseArray(user.fruit_inventory);if(!inventory.includes(fruit.name))inventory.push(fruit.name);db.prepare('UPDATE users SET berries=berries-?,fruit_inventory=?,fruit_name=? WHERE id=?').run(price,JSON.stringify(inventory),fruit.name,user.id);res.json({user:safeUser(getUser(req)),fruit:{name:fruit.name,rarity:fruit.rarity},price});});
-function islandProducts(island){return [...island.weapons,...island.accessories].map(id=>catalog.get(id)).filter(Boolean).concat(island.fruits.map(name=>catalog.get(`fruit:${name}`)).filter(Boolean).map(fruit=>({...fruit,requiredLevel:Math.max(fruit.requiredLevel,island.requiredLevel)})));}
-function currentStock(island,item){const now=Date.now(),restockAt=now+86400000;let row=db.prepare('SELECT quantity,restock_at FROM shop_stock WHERE island_id=? AND item_id=?').get(island.id,item.id);if(!row||row.restock_at<=now){db.prepare('INSERT INTO shop_stock(island_id,item_id,quantity,restock_at) VALUES(?,?,?,?) ON CONFLICT(island_id,item_id) DO UPDATE SET quantity=excluded.quantity,restock_at=excluded.restock_at').run(island.id,item.id,item.stock,restockAt);return{quantity:item.stock,restockAt};}return{quantity:row.quantity,restockAt:row.restock_at};}
-app.get('/api/shops',requireAuth,(req,res)=>{const user=getUser(req),island=islands.find(item=>item.id===req.query.island);if(!island)return res.status(404).json({error:'Island shop not found.'});if(user.level<island.requiredLevel)return res.status(403).json({error:`Requires level ${island.requiredLevel}.`});const inventory=[...parseArray(user.item_inventory),...parseArray(user.fruit_inventory),...parseArray(user.accessory_inventory)];const products=islandProducts(island).filter(item=>user.level>=item.requiredLevel).map(item=>({...item,...currentStock(island,item),owned:inventory.includes(item.id)||inventory.includes(item.name)}));res.json({island:{id:island.id,name:island.name,sea:island.sea,requiredLevel:island.requiredLevel},berries:user.berries,gachaPrice:gachaPrice(user.level),products});});
-app.post('/api/shops/buy',requireAuth,shopLimiter,(req,res)=>{const user=getUser(req),island=islands.find(item=>item.id===req.body?.island),item=catalog.get(req.body?.itemId);if(!island||!item||!islandProducts(island).some(product=>product.id===item.id))return res.status(404).json({error:'That item is not sold at this island.'});if(user.level<Math.max(island.requiredLevel,item.requiredLevel))return res.status(403).json({error:`Requires level ${Math.max(island.requiredLevel,item.requiredLevel)}.`});const ownItems=parseArray(user.item_inventory),ownFruits=parseArray(user.fruit_inventory),ownAccessories=parseArray(user.accessory_inventory);if((item.type==='fruit'&&ownFruits.includes(item.name))||(item.type==='accessory'&&ownAccessories.includes(item.id))||(item.type!=='fruit'&&item.type!=='accessory'&&ownItems.includes(item.id)))return res.status(409).json({error:'You already own this item.'});const transaction=db.transaction(()=>{const current=getUser(req);if(current.berries<item.price)throw Error('NOT_ENOUGH');if(currentStock(island,item).quantity<1)throw Error('OUT_OF_STOCK');const updated=db.prepare('UPDATE shop_stock SET quantity=quantity-1 WHERE island_id=? AND item_id=? AND quantity>0').run(island.id,item.id);if(!updated.changes)throw Error('OUT_OF_STOCK');if(item.type==='fruit'){ownFruits.push(item.name);db.prepare('UPDATE users SET berries=berries-?,fruit_inventory=? WHERE id=?').run(item.price,JSON.stringify(ownFruits),current.id);}else if(item.type==='accessory'){ownAccessories.push(item.id);db.prepare('UPDATE users SET berries=berries-?,accessory_inventory=?,equipped_accessory=?,energy=MIN(energy+?,100+?) WHERE id=?').run(item.price,JSON.stringify(ownAccessories),item.id,item.energyBonus,item.energyBonus,current.id);}else{ownItems.push(item.id);const column=item.type==='sword'?'equipped_sword':'equipped_gun';db.prepare(`UPDATE users SET berries=berries-?,item_inventory=?,${column}=? WHERE id=?`).run(item.price,JSON.stringify(ownItems),item.name,current.id);}});try{transaction();res.json({user:safeUser(getUser(req)),message:`Purchased ${item.name}${item.type==='accessory'?' and equipped it':''}.`});}catch(e){if(e.message==='NOT_ENOUGH')return res.status(400).json({error:'Not enough berries.'});if(e.message==='OUT_OF_STOCK')return res.status(409).json({error:'Sold out. Check again after restock.'});throw e;}});
-app.post('/api/accessory/equip',requireAuth,(req,res)=>{const user=getUser(req),id=req.body?.accessoryId;if(id==='none'){db.prepare('UPDATE users SET equipped_accessory=NULL WHERE id=?').run(user.id);return res.json({user:safeUser(getUser(req))});}const item=accessories.find(a=>a.id===id);if(!item||!parseArray(user.accessory_inventory).includes(id))return res.status(404).json({error:'You do not own that accessory.'});db.prepare('UPDATE users SET equipped_accessory=?,energy=MIN(energy,100+?) WHERE id=?').run(id,item.energyBonus,user.id);res.json({user:safeUser(getUser(req))});});
-app.get('/api/chat',requireAuth,(req,res)=>{const after=Math.max(0,parseInt(req.query.after,10)||0),messages=db.prepare('SELECT id,username,message,created_at AS createdAt FROM chat_messages WHERE id>? ORDER BY id DESC LIMIT 50').all(after).reverse();res.json({messages});});
-app.post('/api/chat',requireAuth,chatLimiter,(req,res)=>{const message=typeof req.body?.message==='string'?req.body.message.trim().replace(/[\u0000-\u001f\u007f]/g,''):'';if(!message||message.length>180)return res.status(400).json({error:'Chat messages must be 1–180 characters.'});const user=getUser(req),result=db.prepare('INSERT INTO chat_messages(user_id,username,message) VALUES(?,?,?)').run(user.id,user.username,message);res.status(201).json({message:db.prepare('SELECT id,username,message,created_at AS createdAt FROM chat_messages WHERE id=?').get(result.lastInsertRowid)});});
-app.post('/api/logout',(req,res)=>req.session.destroy(()=>{res.clearCookie('ocean.sid',{httpOnly:true,sameSite:'lax',secure:production});res.json({ok:true});}));
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
-app.listen(PORT,()=>console.log(`Ocean Fruit RPG running on http://localhost:${PORT}`));
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: 'draft-8', legacyHeaders: false });
+const skillLimiter = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false });
+if (production && !process.env.SESSION_SECRET) throw new Error('Set SESSION_SECRET to a long, random secret in production.');
+if (production) app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", 'https://cdn.jsdelivr.net'], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], connectSrc: ["'self'"], objectSrc: ["'none'"], upgradeInsecureRequests: production ? [] : null } } }));
+app.use(express.json({ limit: '10kb' }));
+app.use(session({
+  store: new SQLiteStoreFactory({ db: 'sessions.sqlite', dir: path.dirname(databasePath) }),
+  secret: process.env.SESSION_SECRET || 'development-only-change-before-deploy-' + crypto.randomBytes(24).toString('hex'),
+  resave: false, saveUninitialized: false, name: 'ocean.sid',
+  cookie: { httpOnly: true, sameSite: 'lax', secure: production, maxAge: 7 * 24 * 60 * 60 * 1000 }
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function parseJson(value, fallback) { try { return JSON.parse(value || ''); } catch { return fallback; } }
+function getUser(req) { return req.session.userId ? db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.userId) : null; }
+function safeUser(row) {
+  if (!row) return null;
+  return { username: row.username, level: row.level, xp: row.xp, race: row.race, raceColor: races[row.race]?.color || '#ffffff', isAdmin: Boolean(row.is_admin), berries: row.berries, energy: Math.min(100, row.energy), maxEnergy: 100, learnedSkills: parseJson(row.learned_skills, []), skillMastery: parseJson(row.skill_mastery, {}) };
+}
+function requireAuth(req, res, next) { if (!getUser(req)) return res.status(401).json({ error: 'Please sign in first.' }); next(); }
+function validCredentials(body) {
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) return { error: 'Username must be 3–20 letters, numbers, or underscores.' };
+  if (password.length < 10 || password.length > 72) return { error: 'Password must be 10–72 characters.' };
+  return { username, password };
+}
+function startSession(req, res, userId, status = 200) {
+  req.session.regenerate(err => {
+    if (err) return res.status(500).json({ error: 'Could not start your session.' });
+    req.session.userId = userId;
+    req.session.save(saveError => {
+      if (saveError) return res.status(500).json({ error: 'Could not save your session.' });
+      res.status(status).json({ user: safeUser(getUser(req)) });
+    });
+  });
+}
+function masteryFor(row) { return parseJson(row.skill_mastery, {}); }
+function skillStats(skillId, mastery) {
+  const base = skillDefaults[skillId];
+  const rank = Math.min(10, Math.floor((mastery || 0) / 3));
+  const cooldownMs = Math.max(2500, Math.round(base.cooldownMs * (1 - rank * 0.06)));
+  if (skillId === 'dodge') return { rank, cooldownMs, energyCost: base.energyCost, durationMs: base.durationMs + rank * 100, distance: base.baseDistance + rank * 1.25 };
+  if (skillId === 'haki') return { rank, cooldownMs, energyCost: base.energyCost, durationMs: base.durationMs + rank * 700, damageMultiplier: +(base.damageMultiplier + rank * 0.05).toFixed(2) };
+  return { rank, cooldownMs, energyCost: base.energyCost, durationMs: base.durationMs, distance: base.baseDistance + rank * 1.5 };
+}
+function trainingData(row) {
+  const learned = parseJson(row.learned_skills, []);
+  const mastery = masteryFor(row);
+  return { trainers: trainers.map(t => ({ ...t, learned: learned.includes(t.id), available: row.level >= t.minLevel, mastery: mastery[t.id] || 0, stats: skillStats(t.id, mastery[t.id] || 0) })), user: safeUser(row) };
+}
+
+app.post('/api/signup', authLimiter, async (req, res) => {
+  const input = validCredentials(req.body || {});
+  if (input.error) return res.status(400).json({ error: input.error });
+  const hash = await bcrypt.hash(input.password, 12);
+  try {
+    const create = db.transaction(() => {
+      const first = db.prepare('SELECT COUNT(*) AS count FROM users').get().count === 0;
+      return db.prepare('INSERT INTO users (username,password_hash,race,is_admin) VALUES (?,?,?,?)').run(input.username, hash, raceNames[crypto.randomInt(raceNames.length)], first ? 1 : 0);
+    });
+    startSession(req, res, Number(create().lastInsertRowid), 201);
+  } catch (error) {
+    if (String(error.code).includes('SQLITE_CONSTRAINT')) return res.status(409).json({ error: 'That username is already taken.' });
+    res.status(500).json({ error: 'Could not create account.' });
+  }
+});
+app.post('/api/login', authLimiter, async (req, res) => {
+  const input = validCredentials(req.body || {});
+  if (input.error) return res.status(400).json({ error: input.error });
+  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(input.username);
+  if (!row || !(await bcrypt.compare(input.password, row.password_hash))) return res.status(401).json({ error: 'Incorrect username or password.' });
+  startSession(req, res, row.id);
+});
+app.get('/api/me', (req, res) => { const row = getUser(req); if (!row) return res.status(401).json({ error: 'Please sign in.' }); res.json({ user: safeUser(row) }); });
+app.post('/api/train', requireAuth, (req, res) => {
+  const now = Date.now();
+  if (req.session.lastTrain && now - req.session.lastTrain < 5000) return res.status(429).json({ error: 'Take a short breather before training again.' });
+  req.session.lastTrain = now;
+  const row = getUser(req); let xp = row.xp + 10, level = row.level;
+  while (xp >= level * 25 && level < 5000) { xp -= level * 25; level++; }
+  db.prepare('UPDATE users SET level = ?, xp = ?, berries = berries + 100 WHERE id = ?').run(level, xp, row.id);
+  res.json({ user: safeUser(getUser(req)) });
+});
+
+app.get('/api/trainers', requireAuth, (req, res) => res.json(trainingData(getUser(req))));
+app.post('/api/trainers/learn', requireAuth, (req, res) => {
+  const trainer = trainers.find(t => t.id === req.body?.skillId);
+  if (!trainer) return res.status(404).json({ error: 'Trainer not found.' });
+  const row = getUser(req), learned = parseJson(row.learned_skills, []);
+  if (learned.includes(trainer.id)) return res.status(409).json({ error: 'You already learned this technique.' });
+  if (row.level < trainer.minLevel) return res.status(403).json({ error: `Reach level ${trainer.minLevel} to train with ${trainer.teacher}.` });
+  if (row.berries < trainer.cost) return res.status(400).json({ error: `Training costs ${trainer.cost.toLocaleString()} berries.` });
+  learned.push(trainer.id);
+  db.prepare('UPDATE users SET berries = berries - ?, learned_skills = ? WHERE id = ?').run(trainer.cost, JSON.stringify(learned), row.id);
+  res.json({ ...trainingData(getUser(req)), message: `${trainer.name} learned! Practice the skill to gain mastery.` });
+});
+app.post('/api/skills/use', requireAuth, skillLimiter, (req, res) => {
+  const id = req.body?.skillId;
+  const trainer = trainers.find(t => t.id === id);
+  if (!trainer) return res.status(404).json({ error: 'Unknown technique.' });
+  const row = getUser(req), learned = parseJson(row.learned_skills, []);
+  if (!learned.includes(id)) return res.status(403).json({ error: 'Find the trainer and learn this technique first.' });
+  const mastery = masteryFor(row), current = mastery[id] || 0, stats = skillStats(id, current);
+  const now = Date.now(), readyAt = req.session.skillReadyAt?.[id] || 0;
+  if (!row.is_admin && now < readyAt) return res.status(429).json({ error: 'Technique is recharging.', remainingMs: readyAt - now });
+  if (!row.is_admin && row.energy < stats.energyCost) return res.status(400).json({ error: 'Not enough energy.' });
+  let direction = req.body?.direction;
+  if (!direction || !Number.isFinite(direction.x) || !Number.isFinite(direction.z)) direction = { x: 0, z: -1 };
+  const length = Math.hypot(direction.x, direction.z) || 1;
+  direction = { x: direction.x / length, z: direction.z / length };
+  if (!row.is_admin) {
+    req.session.skillReadyAt ||= {};
+    req.session.skillReadyAt[id] = now + stats.cooldownMs;
+    mastery[id] = current + 1;
+    const energy = Math.max(0, row.energy - stats.energyCost);
+    db.prepare('UPDATE users SET energy = ?, skill_mastery = ? WHERE id = ?').run(energy, JSON.stringify(mastery), row.id);
+  }
+  const result = { skillId: id, mastery: mastery[id] || current, stats, energy: row.is_admin ? row.energy : Math.max(0, row.energy - stats.energyCost), maxEnergy: 100, admin: Boolean(row.is_admin), direction };
+  res.json({ ...result, message: row.is_admin ? 'Admin training ability: no cooldown or energy cost.' : `${trainer.name} activated. Mastery ${result.mastery}/30 toward the next rank.` });
+});
+app.post('/api/logout', (req, res) => req.session.destroy(() => { res.clearCookie('ocean.sid', { httpOnly: true, sameSite: 'lax', secure: production }); res.json({ ok: true }); }));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.listen(PORT, () => console.log(`Ocean Fruit RPG running on http://localhost:${PORT}`));
