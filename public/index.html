@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071521"><title>Ocean Fruit RPG</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script defer src="/game.js"></script>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D ocean game scene"></canvas>
+  <main id="auth" class="card auth-card">
+    <div class="eyebrow">A new ocean awaits</div><h1>Ocean Fruit RPG</h1>
+    <p>Create an account or sign in. New adventurers receive one randomly assigned race, saved to their account.</p>
+    <form id="authForm">
+      <label>Username<input name="username" autocomplete="username" minlength="3" maxlength="20" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="72" required></label>
+      <div class="actions"><button type="submit" id="submitAuth">Sign in</button><button type="button" class="secondary" id="toggleAuth">Create account</button></div>
+      <div id="authMessage" role="status"></div>
+    </form>
+    <small>Prototype account data is stored by this game server. Use a unique password.</small>
+  </main>
+  <div id="gameUI" hidden>
+    <header class="topbar card"><div><b id="playerName">Adventurer</b><span id="raceBadge"></span></div><div>Level <b id="level">1</b> · XP <b id="xp">0</b> · <b id="raceVersion">Human I</b></div><button id="logout" class="secondary">Log out</button></header>
+    <section class="card race-card"><div class="eyebrow">Your assigned race</div><h2 id="raceName">Human</h2><p id="raceDescription"></p><div class="version-track" id="versionTrack"></div><p class="hint" id="raceHint"></p><button id="raceSkill">Use race effect</button><button id="train" class="secondary">Train (+10 XP)</button></section>
+    <div class="controls card">Move with <b>W A S D</b> · Use race effect with <b>Space</b><br><span id="status">Welcome to the ocean.</span></div>
+  </div>
+</body>
+</html>
